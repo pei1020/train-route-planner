@@ -1,0 +1,12 @@
+Makefile optimization check: 
+OK
+Testing st-20000-8000-5.txt: 
+CPU Time: 1.5648 Simulated time: 4701913 numOperations: 220268
+Testing st-20000-8000-6.txt: 
+CPU Time: 1.676 Simulated time: 4708015 numOperations: 219472
+Testing st-20000-8000-7.txt: 
+CPU Time: 1.63332 Simulated time: 4610493 numOperations: 215497
+
+Total CPU Time: Yours 4.87412  Sean's: 1.80 so your score is 10
+Total of simulated time: Yours 14020421   Sean's: 12995952 so your scores is 24
+Total score: 10 + 24 + 0 = 34
