@@ -1,0 +1,784 @@
+	.EQU KBD_CNTL, $000
+	.EQU KBD_STAT, $000
+	.EQU KBD_DATA, $001
+	.EQU KBD_FLUSH, $40
+	.EQU TIM_CNTL, $030
+	.EQU TIM_STAT, $030
+	.EQU TIM_VALUE, $031
+	.EQU INTERRUPT_ENA, $80
+	.EQU RESET_READY_BIT, $40
+	.EQU START_AFTER_LOAD,$10
+	.EQU ENABLE_RESET_AND_START, $D0
+	.EQU ENABLE_AND_RESET, $C0
+
+          	.EQU CRT_BUFFER,    	$100
+          	.EQU BOTTOM_RIGHT,  	$313
+          	.EQU CRT_XREG,      	$314
+	.EQU CRT_YREG,      	$315
+          	.EQU CRT_CNTL,      	$316
+          	.EQU CRT_DATA,      	$317
+	.EQU CRT_ROWS,      	14
+          	.EQU CRT_COLS,      	38
+          	.EQU CLEAR_DISPLAY, 	$01
+
+          	.EQU PUT_NUM,       	$E00      ; MINI_OS JSRS
+          	.EQU GET_NUM,       	$E01
+	.EQU GET_STR,	$E04
+          	.EQU PUT_STR,       	$E05
+          	.EQU PUT_NL,        	$E06
+          	.EQU PUT_NUM2,      	$E07
+          	.EQU PUT_CHR,       	$E08
+
+	.EQU BOTTOM, 	14 ; testing
+	.EQU START_LENGTH, 	3
+	.EQU LEFT_BORDER,	15
+	.EQU RIGHT_BORDER,	22
+	.EQU BRICK,	'X'
+	.EQU BADBRICK,	'O'
+	.EQU TO_RIGHT, 	0
+	.EQU TO_LEFT,	1
+	.EQU DROP,	' '
+	.EQU SPACE,	' '
+	.EQU QUIT,	'x'
+	.EQU START,	13;ENTER KEY
+	.EQU LENGTH,	0
+	.EQU ROW,	1
+	.EQU COL,	2
+	.EQU DIRECTION,	3
+	;.EQU PLAY_DELAY,	1 ; 
+	;.EQU INTERMISSION_DELAY,	20; # of timer iterations while Game Over shown
+
+
+  	lds#  	$E00
+  	CIE	
+	clr	score 
+	jsr 	showIntro 
+	;psh#	lenPrompt
+	;psh#	iLenPrompt
+	;jsr	PUT_STR
+	;ads#	2
+	;jsr	GET_NUM
+	;sta	startLength
+	jsr	asklength
+	psh	score
+	psh#	block 
+	psh# 	DELAY
+	jsr	startNewScreen
+	ads#	3	
+	lda#	KEYISR
+        	sta 	$FF8
+      	lda#	ENABLE_AND_RESET
+	outb 	KBD_CNTL
+          	lda   DELAY
+          	outw  TIM_VALUE
+    	lda#	TIMERISR
+	sta 	$FFB		; SET-UP TIMER ISR
+	lda#	ENABLE_RESET_AND_START
+	outb 	TIM_CNTL      
+	SIE
+MAINLOOP:	nop
+	jmp	MAINLOOP
+;------------------------------------------------------------------------------------------
+
+KEYISR:
+	psha
+	lda#	0
+	outb	KBD_CNTL
+	INB 	KBD_DATA
+	CMA#	QUIT
+	JNE	KEY2
+	HLT	
+;SPACEBAR
+KEY2:
+	cma#	SPACE
+	jne	KEY4
+;action
+KEY3:
+	psh#	BLOCK
+	psh#	score
+	psh#	delay
+	jsr	dropBlock
+	ads# 	3
+	ldx#	LENGTH
+	lda+	block
+	cma#	0
+	jeq 	gameover
+	psh	score
+	jsr 	showscore
+	ads#	1
+; pause
+KEY4:	
+	cma#	'p'
+	jne	KEYDONE
+	lda#	KBD_FLUSH
+	outb	KBD_CNTL
+
+pause:	inb	KBD_STAT
+	jeq	pause	
+	inb	KBD_DATA
+	cma#	'p'
+	jne	pause
+	
+;finish
+KEYDONE:
+	lda#	INTERRUPT_ENA
+	outb	KBD_CNTL
+	popa
+	irtn
+gameover:	
+	jsr intermission
+	;lda#	KBD_FLUSH
+	;outb	KBD_CNTL   
+	dec startLength
+	psh	score
+	psh#	block 
+	psh# 	DELAY
+	jsr 	startnewscreen
+	ads#	3
+	lda#	ENABLE_RESET_AND_START
+	outb 	TIM_CNTL   	
+	jmp KEYDONE
+;-----------------------------------------------------------------------------------------
+	.EQU	dropBlockBlock, 7
+	.EQU	dropBlockScore, 6
+	.EQU	dropBlockDelay, 5
+	.EQU	iDropBlock, 2
+	.EQU	endDropBlock, 1
+	.EQU	blockOK, 0
+
+dropBlock:
+	BGN#	3
+	PSHA
+	PSHX
+	ldx# COL
+	lda& !dropBlockBlock
+	sta !endDropBlock	
+	ldx# LENGTH
+	lda& !dropBlockBlock
+	ada !endDropBlock
+	sta !endDropBlock ; end = block->col + block->length
+	clr !blockOK ; blockOK = 0
+	psh !dropBlockBlock
+	psh# SPACE
+	jsr  printBlock ; printblock(block, ' ')
+	ads# 2
+
+;init iDropBlock
+dropBlock_1:
+	ldx# COL
+	lda& !dropBlockBlock
+	sta !iDropBlock	; i = BLOCK->COL
+;while iDropBlock < endDropBlock
+dropBlock1:	
+	lda !iDropBlock 
+	cma !endDropBlock 
+	jge	dropBlockDone ; get out of the loop
+dropBlock2:
+	ldx# ROW
+	lda& !dropBlockBlock
+	cma# BOTTOM ; block->row == BOTTOM
+	jne dropBlock_2 ; not the bottom row
+
+dropBlock3:
+	lda !iDropBlock
+	cma# LEFT_BORDER ; stop pass the left wall
+	jgt dropBlock_3 ; greater than left wall
+	ldx# COL 
+	lda& !dropBlockBlock;REDUNDANT!!!!??!?!
+	inc& !dropBlockBlock ; block->col++ 
+	ldx# LENGTH
+	lda& !dropBlockBlock;rednat!!
+	dec& !dropBlockBlock ; (bad play)lock->length--
+	jmp dropBlockLoop
+	
+;dropBlock3 else
+dropBlock_3:
+	lda !iDropBlock
+	cma# RIGHT_BORDER ; check if pass right wall
+	jlt  dropBlockLoop ; nope, so good to go
+	dec& !dropBlockBlock ; bad play, length--
+	jmp  dropBlockLoop
+
+; not bottom row
+dropBlock_2:
+	lda	!iDropBlock
+	ldx# 	ROW 
+	lda& 	!dropBlockBlock 
+	mul#  38;CRT_COLS 
+	ada	!iDropBlock; (block->row +1) + i 
+	sba#	1
+	tax	
+	inb+ 	CRT_BUFFER 
+	cma# 	BRICK ; if(crt[block->row + 1][i] != BRICK)
+	jeq  	dropBlockOK
+	lda 	!blockOK
+	cma# 	0
+	jeq 	dropBlockCol
+
+dropBlockLength:
+	ldx#  LENGTH
+	lda& !dropBlockBlock
+	ldx# LENGTH
+	lda& !dropBlockBlock;REDANT!!?!?
+	dec& !dropBlockBlock
+	jmp  dropBlockLoop
+;block->Col ++
+dropBlockCol:
+	ldx# COL
+	lda& !dropBlockBlock
+	inc& !dropBlockBlock
+	jmp	dropBlockLength
+;set blockOK = 1
+dropBlockOK:
+	lda# 1
+	sta !blockOK
+	jmp  dropBlockLoop
+;iBlock ++
+dropBlockLoop:
+	inc !iDropBlock
+	jmp dropBlock1
+
+dropBlockDone:
+	psh !dropBlockBlock
+	psh# BRICK
+	jsr  printBlock
+	ads# 2
+
+dropBlockDone1:
+	ldx# LENGTH
+	lda& !dropBlockBlock
+	cma# 0
+	jle  dropBlockDone2
+;set the next block value
+dropBlockDone_1:
+	lda# LEFT_BORDER + 2 
+	ldx# LENGTH
+	sba& !dropBlockBlock
+	ldx# COL
+	sta& !dropBlockBlock
+	ldx# ROW	
+	lda& !dropBlockBlock
+	dec& !dropBlockBlock ; redundtant?!?!?!?!?!
+	psh  !dropBlockBlock
+	psh#	BRICK
+	jsr  printBlock
+	ads# 2
+	
+	inc* !dropBlockScore ; not sure!
+	lda* !dropBlockScore 
+	mod# 3
+	cma# 0
+	jne  dropBlockDone2
+	lda*	!dropBlockDelay
+	mul#	3
+	div#	4
+	sta*	!dropBlockDelay
+	
+;if not length > 0
+dropBlockDone2:	
+	ldx# LENGTH
+	lda& !dropBlockBlock
+	popx
+	popa
+	fin#	3
+	rtn
+;----------------------------------------------------------------------------------------------
+asklength:
+	bgn#	0
+	psha
+	lda#	CLEAR_DISPLAY	
+	outb	CRT_CNTL
+	lda#	2
+	outb	CRT_YREG
+	lda#	2
+	outb	CRT_XREG
+getnum:	psh#	lenPrompt
+	psh#	iLenPrompt
+	jsr	PUT_STR
+	ads#	2
+	jsr	GET_NUM	
+	cma#  1
+	jge 	asklength2
+bad:	psh#	badvalueLen
+	psh#	badvalue
+	jsr 	PUT_STR
+	jsr	PUT_NL
+	ads#	2
+	jmp 	getnum
+
+asklength2:	cma#	6
+	jgt	bad
+	sta	startLength
+	popa
+	fin#	0
+	rtn
+;-----------------------------------------------------------------------------------------
+	.equ	startNewScreenScore, 5
+	.equ	startNewScreenBlock, 4
+	.equ	startNewScreenDelay, 3
+	.equ	startNewScreenY, 0
+
+startNewScreen:  
+	BGN#	1
+	PSHA
+	PSHX
+	lda	PLAY_DELAY
+	outw	TIM_VALUE
+	sta*	!startNewScreenDelay
+	LDA#	CLEAR_DISPLAY
+        	OUTB	CRT_CNTL	; CLEAR SCREEN
+	lda#	2
+	outb	CRT_YREG
+	lda#	2
+	outb	CRT_XREG
+	psh#	SCOREPROMPTLEN
+	psh#	SCOREPrompt
+	jsr	put_Str;
+	ads#	2
+	lda#	1
+	sta 	!startNewScreenY	
+startNewScreen1:
+	lda 	!startNewScreenY
+	cma#	15
+	jge	startNewScreen2	; y <= 14?
+	outb	CRT_YREG
+	lda#	LEFT_BORDER
+	outb	CRT_XREG
+	lda#	'|'
+	outb	CRT_DATA		; putChar("|", 0, y)
+	lda#	RIGHT_BORDER
+	outb	CRT_XREG
+	lda#	'|'
+	outb	CRT_DATA		; putChar("|", 11, y)
+	inc 	!startNewScreenY	; y++
+	jmp	startNewScreen1
+
+startNewScreen2:
+	psh 	!startNewScreenScore ; check!
+	jsr	showScore
+	ads#	1
+	lda	startlength
+	ldx# 	LENGTH
+	sta& 	!startNewScreenBlock
+	lda#	BOTTOM
+	ldx#	ROW
+	sta&	!startNewScreenBlock
+	ldx#	COL
+	lda#	LEFT_BORDER - START_LENGTH + 2
+	sta& 	!startNewScreenBlock
+	ldx#	DIRECTION
+	lda#	TO_RIGHT
+	sta& 	!startNewScreenBlock
+	psh 	!startNewScreenBlock
+	psh#	BRICK
+	jsr	printBlock;FIX!!!!
+	ads#	2	
+	popx
+	popa
+	fin#	1
+	RTN	; startNewScreen()
+;-------------------------------------------------------------------------------------
+	.EQU	printBlockBlock, 5
+	.EQU	printLetter, 4	
+	.EQU	iBlock, 1
+	.EQU	tempBlockBlock, 0
+;checking limit and number of blocks
+printBlock:
+	bgn#	2
+	psha
+	pshx
+	clr	!iBlock; iBlock = 0
+;loop i
+printBlock1:
+	ldx#	LENGTH	
+	lda& 	!printBlockBlock
+	cma 	!iBlock
+	jgt	printBlock2
+	jmp	printBlockDone
+;check borders
+printBlock2:
+	ldx# 	COL
+	lda&	!printBlockBlock
+	ada	!iBlock
+	sta	!tempBlockBlock
+	cma#	LEFT_BORDER
+	jle	printBlock3
+	cma#	RIGHT_BORDER
+	jge	printBlock3
+;location
+printFormula:
+	ldx#	ROW
+	lda&	!printBlockBlock
+	sba#	1
+	mul#	CRT_COLS
+	ada	!iBlock
+	sta 	!tempBlockBlock
+	ldx#	COL
+	lda& 	!printBlockBlock
+	sba#	1
+	ada 	!tempBlockBlock
+	tax
+	lda 	!printLetter
+	outb+	CRT_BUFFER
+;i++
+printBlock3:
+	inc 	!iBlock
+	jmp 	printBlock1
+
+printBlockDone:
+	popx
+	popa
+	fin#	2
+	RTN
+;--------------------------------------------------------------------------------------		
+	.equ showScoreScore, 2
+	
+showScore: 	bgn#	0
+	psha
+	lda#	2
+	outb	CRT_YREG
+	lda#	8
+	outb	CRT_XREG
+	lda 	!showScoreScore
+	cma#	10	;greater than 10
+	jge	showScore1
+	lda#	'0'
+	outb	CRT_DATA
+
+showScore1:	lda 	!showScoreScore
+	jsr	put_num2
+	lda#	0		
+	outb	CRT_XREG	; hide cursor
+	popa
+	fin#	0
+	rtn	; // showOutcome()
+;-------------------------------------------------------------------------------------
+showIntro:	BGN#	0
+	psha
+	lda#	CLEAR_DISPLAY
+	outb	CRT_CNTL
+	psh#	intro1Len
+	psh#	intro1
+	jsr 	PUT_STR
+	ads#	2
+	jsr	PUT_NL
+	jsr	PUT_NL
+	psh#	intro2Len
+	psh#	intro2
+	jsr 	PUT_STR
+	ads#	2
+	;jsr	PUT_NL
+	psh#	intro3Len
+	psh#	intro3
+	jsr 	PUT_STR
+	ads#	2
+	;jsr	PUT_NL
+	psh#	intro4Len
+	psh#	intro4
+	jsr 	PUT_STR
+	ads#	2
+	jsr	PUT_NL
+	psh#	intro5Len
+	psh#	intro5
+	jsr 	PUT_STR
+	ads#	2
+	jsr	PUT_NL
+	psh#	intro6Len
+	psh#	intro6
+	jsr 	PUT_STR
+	ads#	2
+	;jsr	PUT_NL
+	psh#	intro7Len
+	psh#	intro7
+	jsr 	PUT_STR
+	ads#	2
+	jsr	PUT_NL
+	psh#	intro8Len
+	psh#	intro8
+	jsr 	PUT_STR
+	jsr 	PUT_NL
+	ads#	2
+	psh#  intro9Len
+	psh#	intro9
+	jsr	PUT_STR
+	jsr	PUT_NL
+	ads#	2
+	lda#	KBD_FLUSH
+	outb	KBD_CNTL
+showIntro2:	inb	KBD_STAT
+	jeq	showIntro2	
+	inb	KBD_DATA
+	cma#	START
+	jne	showIntro2
+	popa
+	FIN#	0
+	rtn
+;------------------------------------------------------------------------------------------
+
+TIMERISR:
+	PSHA
+	lda	DELAY		; just after intermission
+	outw	TIM_VALUE
+	PSH# 	BLOCK
+	JSR	moveblock
+	ads#	1
+	lda# 	ENABLE_AND_RESET;fix this
+	outb	TIM_CNTL
+	popa
+	IRTN
+;-------------------------------------------------------------------------------------------
+	.EQU 	moveblockblock, 3
+	.EQU 	moveblocktemp, 0
+moveBlock:
+	bgn#	1
+	psha
+	pshx
+;erase block
+moveBlock1:
+	psh !moveblockblock
+	psh# SPACE
+	jsr  printBlock
+	ads# 2
+;If block->direction == to_right
+moveBlock2:
+	ldx# DIRECTION
+	lda& !moveblockblock
+	cma#	TO_RIGHT
+	jne moveBlockElse
+	ldx# COL
+	lda& !moveblockblock
+	cma# RIGHT_BORDER - 1
+	jge moveBlock_2 ;goto else
+	inc& !moveblockblock
+	jmp moveBlockDone
+;else
+moveBlock_2:	
+	lda# TO_LEFT
+	ldx# DIRECTION
+	sta& !moveblockblock
+	ldx# COL
+	lda& !moveblockblock;MAYBE REDUNTANT????????
+	dec& !moveblockblock
+	jmp moveBlockDone
+	
+moveBlockElse:
+	ldx# COL
+	lda& !moveblockblock
+	sta !moveblocktemp
+	ldx# LENGTH
+	lda& !moveblockblock
+	ada !moveblocktemp
+	cma# LEFT_BORDER + 2
+	jle  moveBlockElse_2
+	ldx# COL
+	lda& !moveblockblock
+	dec& !moveblockblock
+	jmp  moveBlockDone
+;else2
+moveBlockElse_2:
+	lda# TO_RIGHT
+	ldx# DIRECTION
+	sta& !moveblockblock
+	ldx# COL
+	lda& !moveblockblock;REDUNTANT!???!?!?
+	inc& !moveblockblock
+	jmp moveBlockDone
+;FINISH
+moveBlockDone:	
+	ldx# ROW
+	lda& !moveblockblock
+	mod# 4
+	cma# 0
+	jeq invisBlock
+badBlock:
+	ldx# COL
+	lda& !moveblockblock
+	mod# 3
+	cma# 0
+	jeq	badBlock_1
+
+	psh !moveblockblock
+	psh# BRICK
+	jsr printBlock
+	ads# 2
+moveBlockDone_1:
+	popx
+	popa
+	fin# 1
+	rtn
+
+invisBlock:
+	psh !moveBlockBlock
+	psh# SPACE
+	jsr printBlock
+	ads# 2
+	jmp moveBlockDone_1
+
+badBlock_1:
+	psh# BADBRICK
+	psh !moveBlockBlock
+	jsr  printBadBlockBlock
+	ads# 2
+	jmp moveBlockDone_1
+;------------------------------------------------------------------------------
+	.EQU	printBadLetter, 5
+	.EQU	printBadBlock, 4
+	.EQU	iBadBlock, 1
+	.EQU	tempBadBlock, 0
+;checking limit and number of blocks
+printBadBlockBlock:
+	bgn#	2
+	psha
+	pshx
+	clr	!iBadBlock; iBlock = 0
+;loop i
+printBadBlock1:
+	ldx#	LENGTH	
+	lda& 	!printBadBlock
+	;cma#	0
+	;jeq	gameover
+	cma 	!iBadBlock
+	jgt	printBadBlock2
+	jmp	printBadBlockDone
+;check borders
+printBadBlock2:
+	ldx# 	COL
+	lda&	!printBadBlock
+	ada	!iBadBlock
+	sta	!tempBadBlock
+	cma#	LEFT_BORDER
+	jle	printBadBlock3
+	cma#	RIGHT_BORDER
+	jge	printBadBlock3
+;location
+printBadFormula:
+	ldx#	ROW
+	lda&	!printBadBlock
+	sba#	1
+	mul#	CRT_COLS
+	ada	!iBadBlock
+	sta 	!tempBadBlock
+	ldx#	COL
+	lda& 	!printBadBlock
+	sba#	1
+	ada 	!tempBadBlock
+	tax
+	lda   !printBadLetter
+	outb+	CRT_BUFFER
+;i++
+printBadBlock3:
+	inc 	!iBadBlock
+	jmp 	printBadBlock1
+
+printBadBlockDone:
+	popx
+	popa
+	fin#	2
+	RTN
+;------------------------------------------------------------------------------------------
+intermission:
+	bgn# 	0
+	psha
+	CIE ;disable interrupts and loop until it is reset to ready
+	lda startLength
+	cma# 1
+	jeq GameoverEnd
+	lda#	4
+	outb	CRT_YREG ; y =4
+	lda#	15
+	outb	CRT_XREG ; x =4
+	psh#	RoundPromptLen
+	psh#	RoundPrompt
+	jsr  	PUT_STR
+	ads#	2 ; x =4
+	lda 	ROUNDNUM
+	jsr	put_num2
+	lda#	0		
+	outb	CRT_XREG
+	inc   ROUNDNUM
+	jmp intermission2
+
+GameOverEnd:
+	lda#	4
+	outb	CRT_YREG ; y =4
+	lda#	15
+	outb	CRT_XREG ; x =4
+	psh# gameoverPromptLen
+	psh# gameoverPrompt
+	jsr  PUT_STR
+	ads# 2
+	lda#	0		
+	outb	CRT_XREG
+intermission3:
+	lda#	0
+	outb	CRT_XREG
+	lda	I_DELAY
+	mul#	3
+	outw	TIM_VALUE
+	lda# RESET_READY_BIT + START_AFTER_LOAD;fix this
+	;lda#	START_AFTER_LOAD
+	outb	TIM_CNTL
+poll2:	
+	inb	TIM_STAT
+	jge 	poll2
+
+	jsr askLength
+	lda# 1
+	sta ROUNDNUM
+	inc startLength
+	jmp intermissionDone
+
+
+intermission2:
+	lda#	0
+	outb	CRT_XREG
+	lda	I_DELAY
+	mul#	3
+	outw	TIM_VALUE
+	;lda# RESET_READY_BIT + START_AFTER_LOAD;fix this
+	lda#	START_AFTER_LOAD
+	outb	TIM_CNTL
+poll:	
+	inb	TIM_STAT
+	jge 	poll
+
+intermissionDone:
+	lda#	ENABLE_RESET_AND_START
+	outb 	TIM_CNTL    
+	popa
+	fin#	0 
+	SIE
+	rtn	
+;------------------------------------------------------------------------------------------
+
+	.equ @, $500	
+;TIMER_CNT:	.WORD	PLAY_DELAY
+ROUNDNUM:	.WORD 1
+SPEED:	.WORD	0
+KEY:	.WORD	
+DELAY:    	.WORD     	4000
+PLAY_DELAY:	.WORD		4000
+I_DELAY:	.WORD		4095
+TIMER:	.WORD 	0
+score:	.word	
+level:	.word
+BLOCK:	.BLKW 4
+startLength:	.word
+
+iLenPrompt:	.char 'Please enter block size (1-6)', lenPrompt
+seedPrompt:	.char 'Speed for demo (1 = fast, 9 = slow)', seedPromptLen
+intro1:	.char '          Stacker Introduction', intro1Len
+intro2:	.char 'The game starts when the ', intro2Len
+intro3:	.char 'enter key is pressed. Here are some ', intro3Len
+intro4:  	.char 'options we added.', intro4Len
+intro5:  	.char '1) Pause and restart with p and subsequent p', intro5Len
+intro6:  	.char '2) Invisible blocks with every 3 level', intro6Len
+intro7:  	.char '3) The blocks blink', intro7Len
+intro8:  	.char '4) Start next round with fewer cubes until zero block', intro8Len
+intro9:	.char '5) Users can decide start length of blocks', intro9Len
+
+badvalue:	.char 'Bad Value', badvalueLen
+Enter: .char 'Enter to start the game', Enterlen
+scorePrompt:	.char 'Score:', scorePromptLen
+RoundPrompt:	.char 'Round  ', RoundPromptLen
+gameoverPrompt:	.char 'Game Over', gameoverPromptLen

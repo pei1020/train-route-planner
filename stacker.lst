@@ -1,0 +1,975 @@
+LINE ADDR CONTENTS SOURCE LINE
+  1.              	.EQU KBD_CNTL, $000
+  2.              	.EQU KBD_STAT, $000
+  3.              	.EQU KBD_DATA, $001
+  4.              	.EQU KBD_FLUSH, $40
+  5.              	.EQU TIM_CNTL, $030
+  6.              	.EQU TIM_STAT, $030
+  7.              	.EQU TIM_VALUE, $031
+  8.              	.EQU INTERRUPT_ENA, $80
+  9.              	.EQU RESET_READY_BIT, $40
+ 10.              	.EQU START_AFTER_LOAD,$10
+ 11.              	.EQU ENABLE_RESET_AND_START, $D0
+ 12.              	.EQU ENABLE_AND_RESET, $C0
+ 13.              
+ 14.                        	.EQU CRT_BUFFER,    	$100
+ 15.                        	.EQU BOTTOM_RIGHT,  	$313
+ 16.                        	.EQU CRT_XREG,      	$314
+ 17.              	.EQU CRT_YREG,      	$315
+ 18.                        	.EQU CRT_CNTL,      	$316
+ 19.                        	.EQU CRT_DATA,      	$317
+ 20.              	.EQU CRT_ROWS,      	14
+ 21.                        	.EQU CRT_COLS,      	38
+ 22.                        	.EQU CLEAR_DISPLAY, 	$01
+ 23.              
+ 24.                        	.EQU PUT_NUM,       	$E00      ; MINI_OS JSRS
+ 25.                        	.EQU GET_NUM,       	$E01
+ 26.              	.EQU GET_STR,	$E04
+ 27.                        	.EQU PUT_STR,       	$E05
+ 28.                        	.EQU PUT_NL,        	$E06
+ 29.                        	.EQU PUT_NUM2,      	$E07
+ 30.                        	.EQU PUT_CHR,       	$E08
+ 31.              
+ 32.              	.EQU BOTTOM, 	14 ; testing
+ 33.              	.EQU START_LENGTH, 	3
+ 34.              	.EQU LEFT_BORDER,	15
+ 35.              	.EQU RIGHT_BORDER,	22
+ 36.              	.EQU BRICK,	'X'
+ 37.              	.EQU BADBRICK,	'O'
+ 38.              	.EQU TO_RIGHT, 	0
+ 39.              	.EQU TO_LEFT,	1
+ 40.              	.EQU DROP,	' '
+ 41.              	.EQU SPACE,	' '
+ 42.              	.EQU QUIT,	'x'
+ 43.              	.EQU START,	13;ENTER KEY
+ 44.              	.EQU LENGTH,	0
+ 45.              	.EQU ROW,	1
+ 46.              	.EQU COL,	2
+ 47.              	.EQU DIRECTION,	3
+ 48.              	;.EQU PLAY_DELAY,	1 ; 
+ 49.              	;.EQU INTERMISSION_DELAY,	20; # of timer iterations while Game Over shown
+ 50.              
+ 51.              
+ 52.  000 020E00    	lds#  	$E00
+ 53.  001 FFF033    	CIE	
+ 54.  002 0A2507  	clr	score 
+ 55.  003 412132  	jsr 	showIntro 
+ 56.              	;psh#	lenPrompt
+ 57.              	;psh#	iLenPrompt
+ 58.              	;jsr	PUT_STR
+ 59.              	;ads#	2
+ 60.              	;jsr	GET_NUM
+ 61.              	;sta	startLength
+ 62.  004 4120AA  	jsr	asklength
+ 63.  005 082507  	psh	score
+ 64.  006 080509  	psh#	block 
+ 65.  007 080503  	psh# 	DELAY
+ 66.  008 4120C5  	jsr	startNewScreen
+ 67.  009 120003  	ads#	3	
+ 68.  00A 000017  	lda#	KEYISR
+ 69.  00B 042FF8          	sta 	$FF8
+ 70.  00C 0000C0        	lda#	ENABLE_AND_RESET
+ 71.  00D 712000  	outb 	KBD_CNTL
+ 72.  00E 002503            	lda   DELAY
+ 73.  00F 732031            	outw  TIM_VALUE
+ 74.  010 00016B      	lda#	TIMERISR
+ 75.  011 042FFB  	sta 	$FFB		; SET-UP TIMER ISR
+ 76.  012 0000D0  	lda#	ENABLE_RESET_AND_START
+ 77.  013 712030  	outb 	TIM_CNTL      
+ 78.  014 FFF032  	SIE
+ 79.  015 FFF038  MAINLOOP:	nop
+ 80.  016 402015  	jmp	MAINLOOP
+ 81.              ;------------------------------------------------------------------------------------------
+ 82.              
+ 83.              KEYISR:
+ 84.  017 FFF010  	psha
+ 85.  018 000000  	lda#	0
+ 86.  019 712000  	outb	KBD_CNTL
+ 87.  01A 702001  	INB 	KBD_DATA
+ 88.  01B 200078  	CMA#	QUIT
+ 89.  01C 49201E  	JNE	KEY2
+ 90.  01D FFFFFF  	HLT	
+ 91.              ;SPACEBAR
+ 92.              KEY2:
+ 93.  01E 200020  	cma#	SPACE
+ 94.  01F 49202C  	jne	KEY4
+ 95.              ;action
+ 96.              KEY3:
+ 97.  020 080509  	psh#	BLOCK
+ 98.  021 080507  	psh#	score
+ 99.  022 080503  	psh#	delay
+100.  023 412043  	jsr	dropBlock
+101.  024 120003  	ads# 	3
+102.  025 010000  	ldx#	LENGTH
+103.  026 004509  	lda+	block
+104.  027 200000  	cma#	0
+105.  028 482039  	jeq 	gameover
+106.  029 082507  	psh	score
+107.  02A 412120  	jsr 	showscore
+108.  02B 120001  	ads#	1
+109.              ; pause
+110.              KEY4:	
+111.  02C 200070  	cma#	'p'
+112.  02D 492035  	jne	KEYDONE
+113.  02E 000040  	lda#	KBD_FLUSH
+114.  02F 712000  	outb	KBD_CNTL
+115.              
+116.  030 702000  pause:	inb	KBD_STAT
+117.  031 482030  	jeq	pause	
+118.  032 702001  	inb	KBD_DATA
+119.  033 200070  	cma#	'p'
+120.  034 492030  	jne	pause
+121.              	
+122.              ;finish
+123.              KEYDONE:
+124.  035 000080  	lda#	INTERRUPT_ENA
+125.  036 712000  	outb	KBD_CNTL
+126.  037 FFF013  	popa
+127.  038 FFF041  	irtn
+128.              gameover:	
+129.  039 4121E0  	jsr intermission
+130.              	;lda#	KBD_FLUSH
+131.              	;outb	KBD_CNTL   
+132.  03A 1C250D  	dec startLength
+133.  03B 082507  	psh	score
+134.  03C 080509  	psh#	block 
+135.  03D 080503  	psh# 	DELAY
+136.  03E 4120C5  	jsr 	startnewscreen
+137.  03F 120003  	ads#	3
+138.  040 0000D0  	lda#	ENABLE_RESET_AND_START
+139.  041 712030  	outb 	TIM_CNTL   	
+140.  042 402035  	jmp KEYDONE
+141.              ;-----------------------------------------------------------------------------------------
+142.              	.EQU	dropBlockBlock, 7
+143.              	.EQU	dropBlockScore, 6
+144.              	.EQU	dropBlockDelay, 5
+145.              	.EQU	iDropBlock, 2
+146.              	.EQU	endDropBlock, 1
+147.              	.EQU	blockOK, 0
+148.              
+149.              dropBlock:
+150.  043 680003  	BGN#	3
+151.  044 FFF010  	PSHA
+152.  045 FFF011  	PSHX
+153.  046 010002  	ldx# COL
+154.  047 009007  	lda& !dropBlockBlock
+155.  048 043001  	sta !endDropBlock	
+156.  049 010000  	ldx# LENGTH
+157.  04A 009007  	lda& !dropBlockBlock
+158.  04B 103001  	ada !endDropBlock
+159.  04C 043001  	sta !endDropBlock ; end = block->col + block->length
+160.  04D 0A3000  	clr !blockOK ; blockOK = 0
+161.  04E 083007  	psh !dropBlockBlock
+162.  04F 080020  	psh# SPACE
+163.  050 4120FC  	jsr  printBlock ; printblock(block, ' ')
+164.  051 120002  	ads# 2
+165.              
+166.              ;init iDropBlock
+167.              dropBlock_1:
+168.  052 010002  	ldx# COL
+169.  053 009007  	lda& !dropBlockBlock
+170.  054 043002  	sta !iDropBlock	; i = BLOCK->COL
+171.              ;while iDropBlock < endDropBlock
+172.              dropBlock1:	
+173.  055 003002  	lda !iDropBlock 
+174.  056 203001  	cma !endDropBlock 
+175.  057 4B2087  	jge	dropBlockDone ; get out of the loop
+176.              dropBlock2:
+177.  058 010001  	ldx# ROW
+178.  059 009007  	lda& !dropBlockBlock
+179.  05A 20000E  	cma# BOTTOM ; block->row == BOTTOM
+180.  05B 49206B  	jne dropBlock_2 ; not the bottom row
+181.              
+182.              dropBlock3:
+183.  05C 003002  	lda !iDropBlock
+184.  05D 20000F  	cma# LEFT_BORDER ; stop pass the left wall
+185.  05E 4D2066  	jgt dropBlock_3 ; greater than left wall
+186.  05F 010002  	ldx# COL 
+187.  060 009007  	lda& !dropBlockBlock;REDUNDANT!!!!??!?!
+188.  061 1B9007  	inc& !dropBlockBlock ; block->col++ 
+189.  062 010000  	ldx# LENGTH
+190.  063 009007  	lda& !dropBlockBlock;rednat!!
+191.  064 1C9007  	dec& !dropBlockBlock ; (bad play)lock->length--
+192.  065 402085  	jmp dropBlockLoop
+193.              	
+194.              ;dropBlock3 else
+195.              dropBlock_3:
+196.  066 003002  	lda !iDropBlock
+197.  067 200016  	cma# RIGHT_BORDER ; check if pass right wall
+198.  068 4A2085  	jlt  dropBlockLoop ; nope, so good to go
+199.  069 1C9007  	dec& !dropBlockBlock ; bad play, length--
+200.  06A 402085  	jmp  dropBlockLoop
+201.              
+202.              ; not bottom row
+203.              dropBlock_2:
+204.  06B 003002  	lda	!iDropBlock
+205.  06C 010001  	ldx# 	ROW 
+206.  06D 009007  	lda& 	!dropBlockBlock 
+207.  06E 180026  	mul#  38;CRT_COLS 
+208.  06F 103002  	ada	!iDropBlock; (block->row +1) + i 
+209.  070 140001  	sba#	1
+210.  071 FFF000  	tax	
+211.  072 704100  	inb+ 	CRT_BUFFER 
+212.  073 200058  	cma# 	BRICK ; if(crt[block->row + 1][i] != BRICK)
+213.  074 482082  	jeq  	dropBlockOK
+214.  075 003000  	lda 	!blockOK
+215.  076 200000  	cma# 	0
+216.  077 48207E  	jeq 	dropBlockCol
+217.              
+218.              dropBlockLength:
+219.  078 010000  	ldx#  LENGTH
+220.  079 009007  	lda& !dropBlockBlock
+221.  07A 010000  	ldx# LENGTH
+222.  07B 009007  	lda& !dropBlockBlock;REDANT!!?!?
+223.  07C 1C9007  	dec& !dropBlockBlock
+224.  07D 402085  	jmp  dropBlockLoop
+225.              ;block->Col ++
+226.              dropBlockCol:
+227.  07E 010002  	ldx# COL
+228.  07F 009007  	lda& !dropBlockBlock
+229.  080 1B9007  	inc& !dropBlockBlock
+230.  081 402078  	jmp	dropBlockLength
+231.              ;set blockOK = 1
+232.              dropBlockOK:
+233.  082 000001  	lda# 1
+234.  083 043000  	sta !blockOK
+235.  084 402085  	jmp  dropBlockLoop
+236.              ;iBlock ++
+237.              dropBlockLoop:
+238.  085 1B3002  	inc !iDropBlock
+239.  086 402055  	jmp dropBlock1
+240.              
+241.              dropBlockDone:
+242.  087 083007  	psh !dropBlockBlock
+243.  088 080058  	psh# BRICK
+244.  089 4120FC  	jsr  printBlock
+245.  08A 120002  	ads# 2
+246.              
+247.              dropBlockDone1:
+248.  08B 010000  	ldx# LENGTH
+249.  08C 009007  	lda& !dropBlockBlock
+250.  08D 200000  	cma# 0
+251.  08E 4C20A4  	jle  dropBlockDone2
+252.              ;set the next block value
+253.              dropBlockDone_1:
+254.  08F 000011  	lda# LEFT_BORDER + 2 
+255.  090 010000  	ldx# LENGTH
+256.  091 149007  	sba& !dropBlockBlock
+257.  092 010002  	ldx# COL
+258.  093 049007  	sta& !dropBlockBlock
+259.  094 010001  	ldx# ROW	
+260.  095 009007  	lda& !dropBlockBlock
+261.  096 1C9007  	dec& !dropBlockBlock ; redundtant?!?!?!?!?!
+262.  097 083007  	psh  !dropBlockBlock
+263.  098 080058  	psh#	BRICK
+264.  099 4120FC  	jsr  printBlock
+265.  09A 120002  	ads# 2
+266.              	
+267.  09B 1B7006  	inc* !dropBlockScore ; not sure!
+268.  09C 007006  	lda* !dropBlockScore 
+269.  09D 1A0003  	mod# 3
+270.  09E 200000  	cma# 0
+271.  09F 4920A4  	jne  dropBlockDone2
+272.  0A0 007005  	lda*	!dropBlockDelay
+273.  0A1 180003  	mul#	3
+274.  0A2 190004  	div#	4
+275.  0A3 047005  	sta*	!dropBlockDelay
+276.              	
+277.              ;if not length > 0
+278.              dropBlockDone2:	
+279.  0A4 010000  	ldx# LENGTH
+280.  0A5 009007  	lda& !dropBlockBlock
+281.  0A6 FFF014  	popx
+282.  0A7 FFF013  	popa
+283.  0A8 690003  	fin#	3
+284.  0A9 FFF040  	rtn
+285.              ;----------------------------------------------------------------------------------------------
+286.              asklength:
+287.  0AA 680000  	bgn#	0
+288.  0AB FFF010  	psha
+289.  0AC 000001  	lda#	CLEAR_DISPLAY	
+290.  0AD 712316  	outb	CRT_CNTL
+291.  0AE 000002  	lda#	2
+292.  0AF 712315  	outb	CRT_YREG
+293.  0B0 000002  	lda#	2
+294.  0B1 712314  	outb	CRT_XREG
+295.  0B2 08001D  getnum:	psh#	lenPrompt
+296.  0B3 08050E  	psh#	iLenPrompt
+297.  0B4 412E05  	jsr	PUT_STR
+298.  0B5 120002  	ads#	2
+299.  0B6 412E01  	jsr	GET_NUM	
+300.  0B7 200001  	cma#  1
+301.  0B8 4B20BF  	jge 	asklength2
+302.  0B9 080009  bad:	psh#	badvalueLen
+303.  0BA 08058C  	psh#	badvalue
+304.  0BB 412E05  	jsr 	PUT_STR
+305.  0BC 412E06  	jsr	PUT_NL
+306.  0BD 120002  	ads#	2
+307.  0BE 4020B2  	jmp 	getnum
+308.              
+309.  0BF 200006  asklength2:	cma#	6
+310.  0C0 4D20B9  	jgt	bad
+311.  0C1 04250D  	sta	startLength
+312.  0C2 FFF013  	popa
+313.  0C3 690000  	fin#	0
+314.  0C4 FFF040  	rtn
+315.              ;-----------------------------------------------------------------------------------------
+316.              	.equ	startNewScreenScore, 5
+317.              	.equ	startNewScreenBlock, 4
+318.              	.equ	startNewScreenDelay, 3
+319.              	.equ	startNewScreenY, 0
+320.              
+321.              startNewScreen:  
+322.  0C5 680001  	BGN#	1
+323.  0C6 FFF010  	PSHA
+324.  0C7 FFF011  	PSHX
+325.  0C8 002504  	lda	PLAY_DELAY
+326.  0C9 732031  	outw	TIM_VALUE
+327.  0CA 047003  	sta*	!startNewScreenDelay
+328.  0CB 000001  	LDA#	CLEAR_DISPLAY
+329.  0CC 712316          	OUTB	CRT_CNTL	; CLEAR SCREEN
+330.  0CD 000002  	lda#	2
+331.  0CE 712315  	outb	CRT_YREG
+332.  0CF 000002  	lda#	2
+333.  0D0 712314  	outb	CRT_XREG
+334.  0D1 080006  	psh#	SCOREPROMPTLEN
+335.  0D2 080597  	psh#	SCOREPrompt
+336.  0D3 412E05  	jsr	put_Str;
+337.  0D4 120002  	ads#	2
+338.  0D5 000001  	lda#	1
+339.  0D6 043000  	sta 	!startNewScreenY	
+340.              startNewScreen1:
+341.  0D7 003000  	lda 	!startNewScreenY
+342.  0D8 20000F  	cma#	15
+343.  0D9 4B20E5  	jge	startNewScreen2	; y <= 14?
+344.  0DA 712315  	outb	CRT_YREG
+345.  0DB 00000F  	lda#	LEFT_BORDER
+346.  0DC 712314  	outb	CRT_XREG
+347.  0DD 00007C  	lda#	'|'
+348.  0DE 712317  	outb	CRT_DATA		; putChar("|", 0, y)
+349.  0DF 000016  	lda#	RIGHT_BORDER
+350.  0E0 712314  	outb	CRT_XREG
+351.  0E1 00007C  	lda#	'|'
+352.  0E2 712317  	outb	CRT_DATA		; putChar("|", 11, y)
+353.  0E3 1B3000  	inc 	!startNewScreenY	; y++
+354.  0E4 4020D7  	jmp	startNewScreen1
+355.              
+356.              startNewScreen2:
+357.  0E5 083005  	psh 	!startNewScreenScore ; check!
+358.  0E6 412120  	jsr	showScore
+359.  0E7 120001  	ads#	1
+360.  0E8 00250D  	lda	startlength
+361.  0E9 010000  	ldx# 	LENGTH
+362.  0EA 049004  	sta& 	!startNewScreenBlock
+363.  0EB 00000E  	lda#	BOTTOM
+364.  0EC 010001  	ldx#	ROW
+365.  0ED 049004  	sta&	!startNewScreenBlock
+366.  0EE 010002  	ldx#	COL
+367.  0EF 00000E  	lda#	LEFT_BORDER - START_LENGTH + 2
+368.  0F0 049004  	sta& 	!startNewScreenBlock
+369.  0F1 010003  	ldx#	DIRECTION
+370.  0F2 000000  	lda#	TO_RIGHT
+371.  0F3 049004  	sta& 	!startNewScreenBlock
+372.  0F4 083004  	psh 	!startNewScreenBlock
+373.  0F5 080058  	psh#	BRICK
+374.  0F6 4120FC  	jsr	printBlock;FIX!!!!
+375.  0F7 120002  	ads#	2	
+376.  0F8 FFF014  	popx
+377.  0F9 FFF013  	popa
+378.  0FA 690001  	fin#	1
+379.  0FB FFF040  	RTN	; startNewScreen()
+380.              ;-------------------------------------------------------------------------------------
+381.              	.EQU	printBlockBlock, 5
+382.              	.EQU	printLetter, 4	
+383.              	.EQU	iBlock, 1
+384.              	.EQU	tempBlockBlock, 0
+385.              ;checking limit and number of blocks
+386.              printBlock:
+387.  0FC 680002  	bgn#	2
+388.  0FD FFF010  	psha
+389.  0FE FFF011  	pshx
+390.  0FF 0A3001  	clr	!iBlock; iBlock = 0
+391.              ;loop i
+392.              printBlock1:
+393.  100 010000  	ldx#	LENGTH	
+394.  101 009005  	lda& 	!printBlockBlock
+395.  102 203001  	cma 	!iBlock
+396.  103 4D2105  	jgt	printBlock2
+397.  104 40211C  	jmp	printBlockDone
+398.              ;check borders
+399.              printBlock2:
+400.  105 010002  	ldx# 	COL
+401.  106 009005  	lda&	!printBlockBlock
+402.  107 103001  	ada	!iBlock
+403.  108 043000  	sta	!tempBlockBlock
+404.  109 20000F  	cma#	LEFT_BORDER
+405.  10A 4C211A  	jle	printBlock3
+406.  10B 200016  	cma#	RIGHT_BORDER
+407.  10C 4B211A  	jge	printBlock3
+408.              ;location
+409.              printFormula:
+410.  10D 010001  	ldx#	ROW
+411.  10E 009005  	lda&	!printBlockBlock
+412.  10F 140001  	sba#	1
+413.  110 180026  	mul#	CRT_COLS
+414.  111 103001  	ada	!iBlock
+415.  112 043000  	sta 	!tempBlockBlock
+416.  113 010002  	ldx#	COL
+417.  114 009005  	lda& 	!printBlockBlock
+418.  115 140001  	sba#	1
+419.  116 103000  	ada 	!tempBlockBlock
+420.  117 FFF000  	tax
+421.  118 003004  	lda 	!printLetter
+422.  119 714100  	outb+	CRT_BUFFER
+423.              ;i++
+424.              printBlock3:
+425.  11A 1B3001  	inc 	!iBlock
+426.  11B 402100  	jmp 	printBlock1
+427.              
+428.              printBlockDone:
+429.  11C FFF014  	popx
+430.  11D FFF013  	popa
+431.  11E 690002  	fin#	2
+432.  11F FFF040  	RTN
+433.              ;--------------------------------------------------------------------------------------		
+434.              	.equ showScoreScore, 2
+435.              	
+436.  120 680000  showScore: 	bgn#	0
+437.  121 FFF010  	psha
+438.  122 000002  	lda#	2
+439.  123 712315  	outb	CRT_YREG
+440.  124 000008  	lda#	8
+441.  125 712314  	outb	CRT_XREG
+442.  126 003002  	lda 	!showScoreScore
+443.  127 20000A  	cma#	10	;greater than 10
+444.  128 4B212B  	jge	showScore1
+445.  129 000030  	lda#	'0'
+446.  12A 712317  	outb	CRT_DATA
+447.              
+448.  12B 003002  showScore1:	lda 	!showScoreScore
+449.  12C 412E07  	jsr	put_num2
+450.  12D 000000  	lda#	0		
+451.  12E 712314  	outb	CRT_XREG	; hide cursor
+452.  12F FFF013  	popa
+453.  130 690000  	fin#	0
+454.  131 FFF040  	rtn	; // showOutcome()
+455.              ;-------------------------------------------------------------------------------------
+456.  132 680000  showIntro:	BGN#	0
+457.  133 FFF010  	psha
+458.  134 000001  	lda#	CLEAR_DISPLAY
+459.  135 712316  	outb	CRT_CNTL
+460.  136 08001E  	psh#	intro1Len
+461.  137 080524  	psh#	intro1
+462.  138 412E05  	jsr 	PUT_STR
+463.  139 120002  	ads#	2
+464.  13A 412E06  	jsr	PUT_NL
+465.  13B 412E06  	jsr	PUT_NL
+466.  13C 080019  	psh#	intro2Len
+467.  13D 08052E  	psh#	intro2
+468.  13E 412E05  	jsr 	PUT_STR
+469.  13F 120002  	ads#	2
+470.              	;jsr	PUT_NL
+471.  140 080024  	psh#	intro3Len
+472.  141 080537  	psh#	intro3
+473.  142 412E05  	jsr 	PUT_STR
+474.  143 120002  	ads#	2
+475.              	;jsr	PUT_NL
+476.  144 080011  	psh#	intro4Len
+477.  145 080543  	psh#	intro4
+478.  146 412E05  	jsr 	PUT_STR
+479.  147 120002  	ads#	2
+480.  148 412E06  	jsr	PUT_NL
+481.  149 08002C  	psh#	intro5Len
+482.  14A 080549  	psh#	intro5
+483.  14B 412E05  	jsr 	PUT_STR
+484.  14C 120002  	ads#	2
+485.  14D 412E06  	jsr	PUT_NL
+486.  14E 080026  	psh#	intro6Len
+487.  14F 080558  	psh#	intro6
+488.  150 412E05  	jsr 	PUT_STR
+489.  151 120002  	ads#	2
+490.              	;jsr	PUT_NL
+491.  152 080013  	psh#	intro7Len
+492.  153 080565  	psh#	intro7
+493.  154 412E05  	jsr 	PUT_STR
+494.  155 120002  	ads#	2
+495.  156 412E06  	jsr	PUT_NL
+496.  157 080035  	psh#	intro8Len
+497.  158 08056C  	psh#	intro8
+498.  159 412E05  	jsr 	PUT_STR
+499.  15A 412E06  	jsr 	PUT_NL
+500.  15B 120002  	ads#	2
+501.  15C 08002A  	psh#  intro9Len
+502.  15D 08057E  	psh#	intro9
+503.  15E 412E05  	jsr	PUT_STR
+504.  15F 412E06  	jsr	PUT_NL
+505.  160 120002  	ads#	2
+506.  161 000040  	lda#	KBD_FLUSH
+507.  162 712000  	outb	KBD_CNTL
+508.  163 702000  showIntro2:	inb	KBD_STAT
+509.  164 482163  	jeq	showIntro2	
+510.  165 702001  	inb	KBD_DATA
+511.  166 20000D  	cma#	START
+512.  167 492163  	jne	showIntro2
+513.  168 FFF013  	popa
+514.  169 690000  	FIN#	0
+515.  16A FFF040  	rtn
+516.              ;------------------------------------------------------------------------------------------
+517.              
+518.              TIMERISR:
+519.  16B FFF010  	PSHA
+520.  16C 002503  	lda	DELAY		; just after intermission
+521.  16D 732031  	outw	TIM_VALUE
+522.  16E 080509  	PSH# 	BLOCK
+523.  16F 412175  	JSR	moveblock
+524.  170 120001  	ads#	1
+525.  171 0000C0  	lda# 	ENABLE_AND_RESET;fix this
+526.  172 712030  	outb	TIM_CNTL
+527.  173 FFF013  	popa
+528.  174 FFF041  	IRTN
+529.              ;-------------------------------------------------------------------------------------------
+530.              	.EQU 	moveblockblock, 3
+531.              	.EQU 	moveblocktemp, 0
+532.              moveBlock:
+533.  175 680001  	bgn#	1
+534.  176 FFF010  	psha
+535.  177 FFF011  	pshx
+536.              ;erase block
+537.              moveBlock1:
+538.  178 083003  	psh !moveblockblock
+539.  179 080020  	psh# SPACE
+540.  17A 4120FC  	jsr  printBlock
+541.  17B 120002  	ads# 2
+542.              ;If block->direction == to_right
+543.              moveBlock2:
+544.  17C 010003  	ldx# DIRECTION
+545.  17D 009003  	lda& !moveblockblock
+546.  17E 200000  	cma#	TO_RIGHT
+547.  17F 49218D  	jne moveBlockElse
+548.  180 010002  	ldx# COL
+549.  181 009003  	lda& !moveblockblock
+550.  182 200015  	cma# RIGHT_BORDER - 1
+551.  183 4B2186  	jge moveBlock_2 ;goto else
+552.  184 1B9003  	inc& !moveblockblock
+553.  185 4021A0  	jmp moveBlockDone
+554.              ;else
+555.              moveBlock_2:	
+556.  186 000001  	lda# TO_LEFT
+557.  187 010003  	ldx# DIRECTION
+558.  188 049003  	sta& !moveblockblock
+559.  189 010002  	ldx# COL
+560.  18A 009003  	lda& !moveblockblock;MAYBE REDUNTANT????????
+561.  18B 1C9003  	dec& !moveblockblock
+562.  18C 4021A0  	jmp moveBlockDone
+563.              	
+564.              moveBlockElse:
+565.  18D 010002  	ldx# COL
+566.  18E 009003  	lda& !moveblockblock
+567.  18F 043000  	sta !moveblocktemp
+568.  190 010000  	ldx# LENGTH
+569.  191 009003  	lda& !moveblockblock
+570.  192 103000  	ada !moveblocktemp
+571.  193 200011  	cma# LEFT_BORDER + 2
+572.  194 4C2199  	jle  moveBlockElse_2
+573.  195 010002  	ldx# COL
+574.  196 009003  	lda& !moveblockblock
+575.  197 1C9003  	dec& !moveblockblock
+576.  198 4021A0  	jmp  moveBlockDone
+577.              ;else2
+578.              moveBlockElse_2:
+579.  199 000000  	lda# TO_RIGHT
+580.  19A 010003  	ldx# DIRECTION
+581.  19B 049003  	sta& !moveblockblock
+582.  19C 010002  	ldx# COL
+583.  19D 009003  	lda& !moveblockblock;REDUNTANT!???!?!?
+584.  19E 1B9003  	inc& !moveblockblock
+585.  19F 4021A0  	jmp moveBlockDone
+586.              ;FINISH
+587.              moveBlockDone:	
+588.  1A0 010001  	ldx# ROW
+589.  1A1 009003  	lda& !moveblockblock
+590.  1A2 1A0004  	mod# 4
+591.  1A3 200000  	cma# 0
+592.  1A4 4821B2  	jeq invisBlock
+593.              badBlock:
+594.  1A5 010002  	ldx# COL
+595.  1A6 009003  	lda& !moveblockblock
+596.  1A7 1A0003  	mod# 3
+597.  1A8 200000  	cma# 0
+598.  1A9 4821B7  	jeq	badBlock_1
+599.              
+600.  1AA 083003  	psh !moveblockblock
+601.  1AB 080058  	psh# BRICK
+602.  1AC 4120FC  	jsr printBlock
+603.  1AD 120002  	ads# 2
+604.              moveBlockDone_1:
+605.  1AE FFF014  	popx
+606.  1AF FFF013  	popa
+607.  1B0 690001  	fin# 1
+608.  1B1 FFF040  	rtn
+609.              
+610.              invisBlock:
+611.  1B2 083003  	psh !moveBlockBlock
+612.  1B3 080020  	psh# SPACE
+613.  1B4 4120FC  	jsr printBlock
+614.  1B5 120002  	ads# 2
+615.  1B6 4021AE  	jmp moveBlockDone_1
+616.              
+617.              badBlock_1:
+618.  1B7 08004F  	psh# BADBRICK
+619.  1B8 083003  	psh !moveBlockBlock
+620.  1B9 4121BC  	jsr  printBadBlockBlock
+621.  1BA 120002  	ads# 2
+622.  1BB 4021AE  	jmp moveBlockDone_1
+623.              ;------------------------------------------------------------------------------
+624.              	.EQU	printBadLetter, 5
+625.              	.EQU	printBadBlock, 4
+626.              	.EQU	iBadBlock, 1
+627.              	.EQU	tempBadBlock, 0
+628.              ;checking limit and number of blocks
+629.              printBadBlockBlock:
+630.  1BC 680002  	bgn#	2
+631.  1BD FFF010  	psha
+632.  1BE FFF011  	pshx
+633.  1BF 0A3001  	clr	!iBadBlock; iBlock = 0
+634.              ;loop i
+635.              printBadBlock1:
+636.  1C0 010000  	ldx#	LENGTH	
+637.  1C1 009004  	lda& 	!printBadBlock
+638.              	;cma#	0
+639.              	;jeq	gameover
+640.  1C2 203001  	cma 	!iBadBlock
+641.  1C3 4D21C5  	jgt	printBadBlock2
+642.  1C4 4021DC  	jmp	printBadBlockDone
+643.              ;check borders
+644.              printBadBlock2:
+645.  1C5 010002  	ldx# 	COL
+646.  1C6 009004  	lda&	!printBadBlock
+647.  1C7 103001  	ada	!iBadBlock
+648.  1C8 043000  	sta	!tempBadBlock
+649.  1C9 20000F  	cma#	LEFT_BORDER
+650.  1CA 4C21DA  	jle	printBadBlock3
+651.  1CB 200016  	cma#	RIGHT_BORDER
+652.  1CC 4B21DA  	jge	printBadBlock3
+653.              ;location
+654.              printBadFormula:
+655.  1CD 010001  	ldx#	ROW
+656.  1CE 009004  	lda&	!printBadBlock
+657.  1CF 140001  	sba#	1
+658.  1D0 180026  	mul#	CRT_COLS
+659.  1D1 103001  	ada	!iBadBlock
+660.  1D2 043000  	sta 	!tempBadBlock
+661.  1D3 010002  	ldx#	COL
+662.  1D4 009004  	lda& 	!printBadBlock
+663.  1D5 140001  	sba#	1
+664.  1D6 103000  	ada 	!tempBadBlock
+665.  1D7 FFF000  	tax
+666.  1D8 003005  	lda   !printBadLetter
+667.  1D9 714100  	outb+	CRT_BUFFER
+668.              ;i++
+669.              printBadBlock3:
+670.  1DA 1B3001  	inc 	!iBadBlock
+671.  1DB 4021C0  	jmp 	printBadBlock1
+672.              
+673.              printBadBlockDone:
+674.  1DC FFF014  	popx
+675.  1DD FFF013  	popa
+676.  1DE 690002  	fin#	2
+677.  1DF FFF040  	RTN
+678.              ;------------------------------------------------------------------------------------------
+679.              intermission:
+680.  1E0 680000  	bgn# 	0
+681.  1E1 FFF010  	psha
+682.  1E2 FFF033  	CIE ;disable interrupts and loop until it is reset to ready
+683.  1E3 00250D  	lda startLength
+684.  1E4 200001  	cma# 1
+685.  1E5 4821F4  	jeq GameoverEnd
+686.  1E6 000004  	lda#	4
+687.  1E7 712315  	outb	CRT_YREG ; y =4
+688.  1E8 00000F  	lda#	15
+689.  1E9 712314  	outb	CRT_XREG ; x =4
+690.  1EA 080007  	psh#	RoundPromptLen
+691.  1EB 080599  	psh#	RoundPrompt
+692.  1EC 412E05  	jsr  	PUT_STR
+693.  1ED 120002  	ads#	2 ; x =4
+694.  1EE 002500  	lda 	ROUNDNUM
+695.  1EF 412E07  	jsr	put_num2
+696.  1F0 000000  	lda#	0		
+697.  1F1 712314  	outb	CRT_XREG
+698.  1F2 1B2500  	inc   ROUNDNUM
+699.  1F3 40220C  	jmp intermission2
+700.              
+701.              GameOverEnd:
+702.  1F4 000004  	lda#	4
+703.  1F5 712315  	outb	CRT_YREG ; y =4
+704.  1F6 00000F  	lda#	15
+705.  1F7 712314  	outb	CRT_XREG ; x =4
+706.  1F8 080009  	psh# gameoverPromptLen
+707.  1F9 08059C  	psh# gameoverPrompt
+708.  1FA 412E05  	jsr  PUT_STR
+709.  1FB 120002  	ads# 2
+710.  1FC 000000  	lda#	0		
+711.  1FD 712314  	outb	CRT_XREG
+712.              intermission3:
+713.  1FE 000000  	lda#	0
+714.  1FF 712314  	outb	CRT_XREG
+715.  200 002505  	lda	I_DELAY
+716.  201 180003  	mul#	3
+717.  202 732031  	outw	TIM_VALUE
+718.  203 000050  	lda# RESET_READY_BIT + START_AFTER_LOAD;fix this
+719.              	;lda#	START_AFTER_LOAD
+720.  204 712030  	outb	TIM_CNTL
+721.              poll2:	
+722.  205 702030  	inb	TIM_STAT
+723.  206 4B2205  	jge 	poll2
+724.              
+725.  207 4120AA  	jsr askLength
+726.  208 000001  	lda# 1
+727.  209 042500  	sta ROUNDNUM
+728.  20A 1B250D  	inc startLength
+729.  20B 402215  	jmp intermissionDone
+730.              
+731.              
+732.              intermission2:
+733.  20C 000000  	lda#	0
+734.  20D 712314  	outb	CRT_XREG
+735.  20E 002505  	lda	I_DELAY
+736.  20F 180003  	mul#	3
+737.  210 732031  	outw	TIM_VALUE
+738.              	;lda# RESET_READY_BIT + START_AFTER_LOAD;fix this
+739.  211 000010  	lda#	START_AFTER_LOAD
+740.  212 712030  	outb	TIM_CNTL
+741.              poll:	
+742.  213 702030  	inb	TIM_STAT
+743.  214 4B2213  	jge 	poll
+744.              
+745.              intermissionDone:
+746.  215 0000D0  	lda#	ENABLE_RESET_AND_START
+747.  216 712030  	outb 	TIM_CNTL    
+748.  217 FFF013  	popa
+749.  218 690000  	fin#	0 
+750.  219 FFF032  	SIE
+751.  21A FFF040  	rtn	
+752.              ;------------------------------------------------------------------------------------------
+753.              
+754.              	.equ @, $500	
+755.              ;TIMER_CNT:	.WORD	PLAY_DELAY
+756.  500 000001  ROUNDNUM:	.WORD 1
+757.  501 000000  SPEED:	.WORD	0
+758.  502 000000  KEY:	.WORD	
+759.  503 000FA0  DELAY:    	.WORD     	4000
+760.  504 000FA0  PLAY_DELAY:	.WORD		4000
+761.  505 000FFF  I_DELAY:	.WORD		4095
+762.  506 000000  TIMER:	.WORD 	0
+763.  507 000000  score:	.word	
+764.  508 000000  level:	.word
+765.  509 FFFFFFFFFFFFFFFF  BLOCK:	.BLKW 4
+766.  50D 000000  startLength:	.word
+767.              
+768.  50E 506C65  iLenPrompt:	.char 'Please enter block size (1-6)', lenPrompt
+      50F 617365
+      510 20656E
+      511 746572
+      512 20626C
+      513 6F636B
+      514 207369
+      515 7A6520
+      516 28312D
+      517 362920
+769.  518 537065  seedPrompt:	.char 'Speed for demo (1 = fast, 9 = slow)', seedPromptLen
+      519 656420
+      51A 666F72
+      51B 206465
+      51C 6D6F20
+      51D 283120
+      51E 3D2066
+      51F 617374
+      520 2C2039
+      521 203D20
+      522 736C6F
+      523 772920
+770.  524 202020  intro1:	.char '          Stacker Introduction', intro1Len
+      525 202020
+      526 202020
+      527 205374
+      528 61636B
+      529 657220
+      52A 496E74
+      52B 726F64
+      52C 756374
+      52D 696F6E
+771.  52E 546865  intro2:	.char 'The game starts when the ', intro2Len
+      52F 206761
+      530 6D6520
+      531 737461
+      532 727473
+      533 207768
+      534 656E20
+      535 746865
+      536 202020
+772.  537 656E74  intro3:	.char 'enter key is pressed. Here are some ', intro3Len
+      538 657220
+      539 6B6579
+      53A 206973
+      53B 207072
+      53C 657373
+      53D 65642E
+      53E 204865
+      53F 726520
+      540 617265
+      541 20736F
+      542 6D6520
+773.  543 6F7074  intro4:  	.char 'options we added.', intro4Len
+      544 696F6E
+      545 732077
+      546 652061
+      547 646465
+      548 642E20
+774.  549 312920  intro5:  	.char '1) Pause and restart with p and subsequent p', intro5Len
+      54A 506175
+      54B 736520
+      54C 616E64
+      54D 207265
+      54E 737461
+      54F 727420
+      550 776974
+      551 682070
+      552 20616E
+      553 642073
+      554 756273
+      555 657175
+      556 656E74
+      557 207020
+775.  558 322920  intro6:  	.char '2) Invisible blocks with every 3 level', intro6Len
+      559 496E76
+      55A 697369
+      55B 626C65
+      55C 20626C
+      55D 6F636B
+      55E 732077
+      55F 697468
+      560 206576
+      561 657279
+      562 203320
+      563 6C6576
+      564 656C20
+776.  565 332920  intro7:  	.char '3) The blocks blink', intro7Len
+      566 546865
+      567 20626C
+      568 6F636B
+      569 732062
+      56A 6C696E
+      56B 6B2020
+777.  56C 342920  intro8:  	.char '4) Start next round with fewer cubes until zero block', intro8Len
+      56D 537461
+      56E 727420
+      56F 6E6578
+      570 742072
+      571 6F756E
+      572 642077
+      573 697468
+      574 206665
+      575 776572
+      576 206375
+      577 626573
+      578 20756E
+      579 74696C
+      57A 207A65
+      57B 726F20
+      57C 626C6F
+      57D 636B20
+778.  57E 352920  intro9:	.char '5) Users can decide start length of blocks', intro9Len
+      57F 557365
+      580 727320
+      581 63616E
+      582 206465
+      583 636964
+      584 652073
+      585 746172
+      586 74206C
+      587 656E67
+      588 746820
+      589 6F6620
+      58A 626C6F
+      58B 636B73
+779.              
+780.  58C 426164  badvalue:	.char 'Bad Value', badvalueLen
+      58D 205661
+      58E 6C7565
+781.  58F 456E74  Enter: .char 'Enter to start the game', Enterlen
+      590 657220
+      591 746F20
+      592 737461
+      593 727420
+      594 746865
+      595 206761
+      596 6D6520
+782.  597 53636F  scorePrompt:	.char 'Score:', scorePromptLen
+      598 72653A
+783.  599 526F75  RoundPrompt:	.char 'Round  ', RoundPromptLen
+      59A 6E6420
+      59B 202020
+784.  59C 47616D  gameoverPrompt:	.char 'Game Over', gameoverPromptLen
+      59D 65204F
+      59E 766572
+
+                     SYMBOL TABLE CONTENTS
+
+0000AA = ASKLENGTH       0000BF = ASKLENGTH2      0000B9 = BAD             
+0001A5 = BADBLOCK        0001B7 = BADBLOCK_1      00004F = BADBRICK        
+00058C = BADVALUE        000009 = BADVALUELEN     000509 = BLOCK           
+000000 = BLOCKOK         00000E = BOTTOM          000313 = BOTTOM_RIGHT    
+000058 = BRICK           000001 = CLEAR_DISPLAY   000002 = COL             
+000100 = CRT_BUFFER      000316 = CRT_CNTL        000026 = CRT_COLS        
+000317 = CRT_DATA        00000E = CRT_ROWS        000314 = CRT_XREG        
+000315 = CRT_YREG        000503 = DELAY           000003 = DIRECTION       
+000020 = DROP            000043 = DROPBLOCK       000055 = DROPBLOCK1      
+000058 = DROPBLOCK2      00005C = DROPBLOCK3      000007 = DROPBLOCKBLOCK  
+00007E = DROPBLOCKCOL    000005 = DROPBLOCKDELAY  000087 = DROPBLOCKDONE   
+00008B = DROPBLOCKDONE1  0000A4 = DROPBLOCKDONE2  00008F = DROPBLOCKDONE_1 
+000078 = DROPBLOCKLENGTH 000085 = DROPBLOCKLOOP   000082 = DROPBLOCKOK     
+000006 = DROPBLOCKSCORE  000052 = DROPBLOCK_1     00006B = DROPBLOCK_2     
+000066 = DROPBLOCK_3     0000C0 = ENABLE_AND_RESET0000D0 = ENABLE_RESET_AND_START
+000001 = ENDDROPBLOCK    00058F = ENTER           000017 = ENTERLEN        
+000039 = GAMEOVER        0001F4 = GAMEOVEREND     00059C = GAMEOVERPROMPT  
+000009 = GAMEOVERPROMPTLEN0000B2 = GETNUM          000E01 = GET_NUM         
+000E04 = GET_STR         000001 = IBADBLOCK       000001 = IBLOCK          
+000002 = IDROPBLOCK      00050E = ILENPROMPT      0001E0 = INTERMISSION    
+00020C = INTERMISSION2   0001FE = INTERMISSION3   000215 = INTERMISSIONDONE
+000080 = INTERRUPT_ENA   000524 = INTRO1          00001E = INTRO1LEN       
+00052E = INTRO2          000019 = INTRO2LEN       000537 = INTRO3          
+000024 = INTRO3LEN       000543 = INTRO4          000011 = INTRO4LEN       
+000549 = INTRO5          00002C = INTRO5LEN       000558 = INTRO6          
+000026 = INTRO6LEN       000565 = INTRO7          000013 = INTRO7LEN       
+00056C = INTRO8          000035 = INTRO8LEN       00057E = INTRO9          
+00002A = INTRO9LEN       0001B2 = INVISBLOCK      000505 = I_DELAY         
+000000 = KBD_CNTL        000001 = KBD_DATA        000040 = KBD_FLUSH       
+000000 = KBD_STAT        000502 = KEY             00001E = KEY2            
+000020 = KEY3            00002C = KEY4            000035 = KEYDONE         
+000017 = KEYISR          00000F = LEFT_BORDER     000000 = LENGTH          
+00001D = LENPROMPT       000508 = LEVEL           000015 = MAINLOOP        
+000175 = MOVEBLOCK       000178 = MOVEBLOCK1      00017C = MOVEBLOCK2      
+000003 = MOVEBLOCKBLOCK  0001A0 = MOVEBLOCKDONE   0001AE = MOVEBLOCKDONE_1 
+00018D = MOVEBLOCKELSE   000199 = MOVEBLOCKELSE_2 000000 = MOVEBLOCKTEMP   
+000186 = MOVEBLOCK_2     000030 = PAUSE           000504 = PLAY_DELAY      
+000213 = POLL            000205 = POLL2           000004 = PRINTBADBLOCK   
+0001C0 = PRINTBADBLOCK1  0001C5 = PRINTBADBLOCK2  0001DA = PRINTBADBLOCK3  
+0001BC = PRINTBADBLOCKBLOCK0001DC = PRINTBADBLOCKDONE0001CD = PRINTBADFORMULA 
+000005 = PRINTBADLETTER  0000FC = PRINTBLOCK      000100 = PRINTBLOCK1     
+000105 = PRINTBLOCK2     00011A = PRINTBLOCK3     000005 = PRINTBLOCKBLOCK 
+00011C = PRINTBLOCKDONE  00010D = PRINTFORMULA    000004 = PRINTLETTER     
+000E08 = PUT_CHR         000E06 = PUT_NL          000E00 = PUT_NUM         
+000E07 = PUT_NUM2        000E05 = PUT_STR         000078 = QUIT            
+000040 = RESET_READY_BIT 000016 = RIGHT_BORDER    000500 = ROUNDNUM        
+000599 = ROUNDPROMPT     000007 = ROUNDPROMPTLEN  000001 = ROW             
+000507 = SCORE           000597 = SCOREPROMPT     000006 = SCOREPROMPTLEN  
+000518 = SEEDPROMPT      000023 = SEEDPROMPTLEN   000132 = SHOWINTRO       
+000163 = SHOWINTRO2      000120 = SHOWSCORE       00012B = SHOWSCORE1      
+000002 = SHOWSCORESCORE  000020 = SPACE           000501 = SPEED           
+00000D = START           00050D = STARTLENGTH     0000C5 = STARTNEWSCREEN  
+0000D7 = STARTNEWSCREEN1 0000E5 = STARTNEWSCREEN2 000004 = STARTNEWSCREENBLOCK
+000003 = STARTNEWSCREENDELAY000005 = STARTNEWSCREENSCORE000000 = STARTNEWSCREENY 
+000010 = START_AFTER_LOAD000003 = START_LENGTH    000000 = TEMPBADBLOCK    
+000000 = TEMPBLOCKBLOCK  000506 = TIMER           00016B = TIMERISR        
+000030 = TIM_CNTL        000030 = TIM_STAT        000031 = TIM_VALUE       
+000001 = TO_LEFT         000000 = TO_RIGHT        
